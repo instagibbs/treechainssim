@@ -10,6 +10,7 @@ numlevels = 6
 #1) Get the chain structure correct to gather statistics about mining times
 #2) Add transaction fees
 #3) Figure out orphaning
+#4) Figure out way to simulate mining wait times other than explicitly?
 
 #Chain class is how we build up tree chain. 
 #For now there will be just one copy, but
