@@ -52,7 +52,7 @@ class Chain(object):
 	#def difficulty(self):
 		
 		
-
+#TODO: fix prefix
 #Always make new block when you add new transaction
 class Block(object):
 	def __init__(self):
@@ -65,7 +65,7 @@ class Block(object):
 		self.transactions = transactions
 		self.ldesc = None
 		self.rdesc = None
-		self.prefix = transactions[0].hash[0:level-1] #We assume same prefix through block level
+		self.prefix = transactions[0].hash[0:level] #We assume same prefix through block level
 		self.parent = None #When hash is low enough, blocks are linked
 		self.level = level
 		self.orphaned = False
@@ -174,7 +174,7 @@ class Miner(object):
 					#Chainnum for this level
 					chainnum = getchainnum(self.blocks[i].prefix, i)
 					#Determine left/rightness to parent
-					if self.blocks[i].prefix[i] == '0':
+					if self.blocks[i].prefix[i-1] == '0':
 						self.blocks[i-1].ldesc = self.blocks[i]
 					else:
 						self.blocks[i-1].rdesc = self.blocks[i]
@@ -225,9 +225,9 @@ class announcedBlocks(object):
 
 #Takes binary string and level, returns chain number
 def getchainnum(prefix, level):
-	if level == 1:
+	if level == 0:
 		return 0
-	return (int(prefix[0,level], 2))
+	return int(prefix[0:level], 2)
 
 #Creates blank chains of specified tree depth
 def initChains(levels):
@@ -236,7 +236,7 @@ def initChains(levels):
 	for level in range(1,levels):
 		chains.append([])
 		#At each level, the parent is floor(index/2) with intmath
-		for index in range(0,level):
+		for index in range(0,level+1):
 			chain = Chain((chains[level-1][index/2]))
 			chains[level].append(chain)
 	return chains
@@ -268,7 +268,7 @@ def longerChain(chain1, chain2):
 		#Default to current chain
 		return chain1
 
-#Make sure to get end of chain case right
+
 def chainPairingValid(parent, child):
 	childInd = 0
 	for parentInd in range(0,parent.length()):
@@ -288,6 +288,8 @@ def chainPairingValid(parent, child):
 			
 
 #Update treechain1 to include treechain2 blocks/chains
+#Might not be totally correct in corner cases.
+#Hopefully count orphans here?
 def updateTreeChain(treechain1, treechain2):
 	if treechain1 == None and treechain2 != None:
 		treechain1 = initChains(len(treechain2))
