@@ -6,6 +6,8 @@ import random
 difficulty = sys.maxint/8
 numlevels = 3
 txncnt = 1
+#random.seed(104)
+print random.seed()
 
 #TODO
 #1) Get the chain structure correct to gather statistics about mining times
@@ -236,7 +238,7 @@ def initChains(levels):
 	for level in range(1,levels):
 		chains.append([])
 		#At each level, the parent is floor(index/2) with intmath
-		for index in range(0,level+1):
+		for index in range(0, 2**level):
 			chain = Chain((chains[level-1][index/2]))
 			chains[level].append(chain)
 	return chains
