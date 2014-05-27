@@ -3,11 +3,11 @@ import os
 import sys
 import random
 
-difficulty = sys.maxint/8
+difficulty = sys.maxint/64
 numlevels = 3
 txncnt = 1
 #random.seed(104)
-print random.seed()
+
 
 #TODO
 #1) Get the chain structure correct to gather statistics about mining times
@@ -160,7 +160,7 @@ class Miner(object):
 		for i in range(0,numlevels):
 			if self.blocks[i] == None:
 				continue
-			if hashval < difficulty/(2**(i)):
+			if hashval < difficulty*(2**(i)):
 				print('Found block at level %d' % (i+1))
 				successful = True
 				#Add conf and age marker
