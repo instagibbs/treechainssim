@@ -2,27 +2,26 @@ import simpy
 import os
 import sys
 import random
+import time
 
-difficulty = sys.maxint/64
+target = sys.maxint/(2**14)
 numlevels = 3
 txncnt = 1
-#random.seed(104)
+
+time = time.time()
+print time
+#random.seed(1401391136.79)
 
 
 #TODO
-#1) Get the chain structure correct to gather statistics about mining times
+#1) Figure out orphaning, record statistics
 #2) Add transaction fees
-#3) Figure out orphaning
-#4) Figure out way to simulate mining wait times other than explicitly?
+#3) Figure out way to simulate mining wait times other than explicitly?
+#4) Model latency
 
-'''
-For representing connectedness to higher chains
-I'll take the time to code up the backtracking necessary
-'''
+#turn into class field
+neighbors = []
 
-#Chain class is how we build up tree chain. 
-#For now there will be just one copy, but
-#can be extended for one copy for each miner
 class Chain(object):
 	def __init__(self, parent):
 		#self.env = env
@@ -54,19 +53,19 @@ class Chain(object):
 	#def difficulty(self):
 		
 		
-#TODO: fix prefix
-#Always make new block when you add new transaction
+#Always make new block when you add new transactions
 class Block(object):
 	def __init__(self):
-		self.ldesc = None
+		#self.ldesc = None
 		self.rdesc = None
 
-	def __init__(self, env, transactions, level, previous):
+	def __init__(self, env, transactions, level, previous, time):
 		self.env = env
-		self.age = 0 #env ages this one by one
+		self.age = 0 #how old the block is since it was "created"
 		self.transactions = transactions
-		self.ldesc = None
-		self.rdesc = None
+		#self.ldesc = None
+		#self.rdesc = None
+		self.desc = [None, None]
 		self.prefix = transactions[0].hash[0:level] #We assume same prefix through block level
 		self.parent = None #When hash is low enough, blocks are linked
 		self.level = level
@@ -74,8 +73,9 @@ class Block(object):
 		self.previous = previous
 		self.difficulty = 1 #Need to figure out exact method, for now block depth as proxy
 		self.conf = 0
-		self.conftimes = [] #Store age during confs
+		self.conftimes = [] #Store age during confs, says how long first conf took, etc
 		self.action = env.process(self.run())
+		self.time = time #Env time when it gets put in block. "timestamp"
 
 	#Need to test when this increments
 	def run(self):
@@ -85,8 +85,18 @@ class Block(object):
 		
 	#Copy gets "refreshed" block, to re-mine
 	def copy(self):
-		return Block(self.env, self.transactions, self.level, self.previous)
+		return Block(self.env, self.transactions, self.level, self.previous, self.time)
 		
+	def __eq__(self, other):
+		if other == None:
+			return False
+		return self.__dict__ == other.__dict__
+
+	def __ne__(self, other):
+		if other == None:
+			return True
+		return not self.__eq__(other)		
+
 	#def setLDesc(self, ldesc):
 	#	self.ldesc
 
@@ -119,7 +129,7 @@ class Miner(object):
 			#self.mine(difficulty)
 
 			try:
-                		self.mine(difficulty)#, self.blocks)
+                		self.mine(target)#, self.blocks)
 				
 			except simpy.Interrupt:
 				#print('Was interrupted. Hope, the battery is full enough....
@@ -144,24 +154,38 @@ class Miner(object):
 		self.blocks = []
 		for i in range(0, numlevels):
 			if len(self.chains[i]) > 0:
-				self.blocks.append(Block(self.env, txns[i], i, self.chains[i][-1]))
+				self.blocks.append(Block(self.env, txns[i], i, self.chains[i][-1], -1))
 			else:
-				self.blocks.append(Block(self.env, txns[i], i, None))				
+				self.blocks.append(Block(self.env, txns[i], i, None,  -1))				
+
+	#For now faking it, just sharing self
+	def alertOnBlock(self):
+		for neighbor in neighbors:
+			if neighbor == self:
+				continue
+			neighbor.acceptBlocks(self)
+
+	def acceptBlocks(self, neighbor):
+		self.chains = updateTreeChain(self.chains, neighbor.chains)
 	
 	#This checks for orphaned blocks
 	#def clearOrphaned(self):
 		
 
 
-	def mine(self, difficulty):#, blocks):
+	def mine(self, target):#, blocks):
 		hashval = random.randint(0,sys.maxint)
 		successful = False
 		link = False #Set to true when linking will start
 		for i in range(0,numlevels):
 			if self.blocks[i] == None:
 				continue
-			if hashval < difficulty*(2**(i)):
-				print('Found block at level %d' % (i+1))
+			if hashval < target*(2**(i)):
+				if link == False:
+					print '-----------------'
+				print 'Miner', str(self.id), 'found block at level', str(i), 'time:', self.env._now
+
+				self.blocks[i].time = self.env._now
 				successful = True
 				#Add conf and age marker
 				self.blocks[i].conf = 1
@@ -177,9 +201,9 @@ class Miner(object):
 					chainnum = getchainnum(self.blocks[i].prefix, i)
 					#Determine left/rightness to parent
 					if self.blocks[i].prefix[i-1] == '0':
-						self.blocks[i-1].ldesc = self.blocks[i]
+						self.blocks[i-1].desc[0] = self.blocks[i]
 					else:
-						self.blocks[i-1].rdesc = self.blocks[i]
+						self.blocks[i-1].desc[1] = self.blocks[i]
 					self.blocks[i].parent = self.blocks[i-1]
 					self.chains[i][chainnum].addBlock(self.blocks[i])
 					#Only block reward for now
@@ -188,6 +212,7 @@ class Miner(object):
 
 		#If mined a block, make new txns/blocks
 		if successful == True:
+			self.alertOnBlock()
 			self.fillMempool(numlevels)
 			self.buildBlocks()
 
@@ -207,13 +232,21 @@ class Transaction(object):
 	def copy(self):
 		return Transaction(self.id, self.token, self.levl)
 
+	def __eq__(self, other):
+		return self.__dict__ == other.__dict__
 
+	def __ne__(self, other):
+		return not self.__eq__(other)
+
+#Tokens will be memory shared
 class Token(object):
 	def __init__(self, currChain):
 		self.currChain = currChain
 
 	def sendToken(self, nextChain):
 		self.currChain = nextChain
+
+	
 '''
 class announcedBlocks(object):
 	def __init__(self, env):
@@ -241,6 +274,10 @@ def initChains(levels):
 		for index in range(0, 2**level):
 			chain = Chain((chains[level-1][index/2]))
 			chains[level].append(chain)
+			if index % 2 == 0:			
+				chains[level-1][index/2].lchild = chain
+			else:
+				chains[level-1][index/2].rchild = chain
 	return chains
 
 #Generate hash for txn
@@ -270,58 +307,66 @@ def longerChain(chain1, chain2):
 		#Default to current chain
 		return chain1
 
-
-def chainPairingValid(parent, child):
+#Does stepping along parent chain until link is expected, then looks for link on child
+def chainPairingValid(parent, child, lr):
 	childInd = 0
 	for parentInd in range(0,parent.length()):
-		if parent.blocks[parentInd].rdesc != None or parent.blocks[parentInd].ldesc != None:
+		if parent.blocks[parentInd].desc[lr] != None:
+			#Catches null child case
+			if child.length() == 0:
+				return False
 			while child.blocks[childInd].parent == None and childInd < child.length():
 				childInd += 1
 			parentlink = child.blocks[childInd].parent
-			llink = parent.blocks[parentInd].ldesc
-			rlink = parent.blocks[parentInd].rdesc
+			childlink = parent.blocks[parentInd].desc[lr]
+			#rlink = parent.blocks[parentInd].desc[1]
 
-			if parentlink != llink and parentlink != rlink:
+			if parentlink != parent.blocks[parentInd] or childlink != child.blocks[childInd]:# and parentlink != rlink:
 				return False
 
 	return True
 
-			
-			
+#Return block depth in chain. -1 for failure to find	
+def blockDepth(block, chain):
+	depth = 0
+	for i in range(0, chain.length()):
+		if block == chain[-(i+1)]:
+			return depth
+		else:
+			depth += 1
+	return -1		
 
 #Update treechain1 to include treechain2 blocks/chains
 #Might not be totally correct in corner cases.
 #Hopefully count orphans here?
+#When replacing chains, need to update l/r pointers and whatnot
 def updateTreeChain(treechain1, treechain2):
+
+	newtreechain = initChains(numlevels)
+
 	if treechain1 == None and treechain2 != None:
 		treechain1 = initChains(len(treechain2))
 	if treechain2 == None:
 		return treechain1
 	
 	#Root chain only checks length. No validity to check.
-	treechain1[0][0] = longerchain(treechain1[0][0],treechain2[0][0])
-	#rootchain = None
-	#if root == 1:
-	#	rootchain = treechain1[0]
-	#elif root == -1:
-	#	rootchain = treechain2[0]
-	#else:
-		#Assume own chain will be mined
-	#	rootchain = treechain1[0]
+	newtreechain[0][0] = longerChain(treechain1[0][0],treechain2[0][0]).copy()
+
 
 	for level in range(1,len(treechain1)):
 		for chainnum in range(0,len(treechain1[level])):
+			lr = chainnum % 2
 			#Subsequent chains must be checked for validity with parent chain as well.
-			if chainPairingValid(treechain1[level-1][chainnum/2], treechain1[level][chainnum]):
-				if chainPairingValid(treechain2[level-1][chainnum/2], treechain2[level][chainnum]):
+			if chainPairingValid(treechain1[level-1][chainnum/2], treechain1[level][chainnum], lr):
+				if chainPairingValid(treechain2[level-1][chainnum/2], treechain2[level][chainnum], lr):
 					#Check chain lengths
-					treechain1[level][chainnum] = longerChain(treechain1[level][chainnum], treechain2[level][chainnum])
+					newtreechain[level][chainnum] = longerChain(treechain1[level][chainnum], treechain2[level][chainnum]).copy()
 				else:
 					#Keep chain
 					continue
 			else:
-				if chainPairingValid(treechain2[level-1][chainnum/2], treechain2[level][chainnum]):
-					treechain1[level][chainnum] = treechain2[level][chainnum]
+				if chainPairingValid(newtreechain[level-1][chainnum/2], treechain2[level][chainnum], lr):
+					newtreechain[level][chainnum] = treechain2[level][chainnum].copy()
 				else:
 					print 'Both treechains in comparison broken. Something is wrong'
 					sys.exit()
@@ -331,6 +376,12 @@ env = simpy.Environment()
 #env.process(car(env)) #for interactions
 #chain1 = Chain(None)
 #chains = [[chain1]] #2-dim list for tree structure of chains
-miner1 = Miner(env, 1)
+miners = []
+for i in range(0,400):
+	neighbors.append(Miner(env, i))
+#miner1 = Miner(env, 1)
+#miner2 = Miner(env, 2)
+#neighbors.append(miner1)
+#neighbors.append(miner2)
 #env.process()
-env.run(until=15)
+env.run(until=10000)
