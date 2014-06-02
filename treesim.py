@@ -10,10 +10,11 @@ txncnt = 1
 
 time = time.time()
 print time
-#random.seed(1401391136.79)
+random.seed(1401714166.57)
 
 
 #TODO
+#0) Ask how long it takes a particular token to be able to be re-spent
 #1) Figure out orphaning, record statistics
 #2) Add transaction fees
 #3) Figure out way to simulate mining wait times other than explicitly?
@@ -183,7 +184,8 @@ class Miner(object):
 			if hashval < target*(2**(i)):
 				if link == False:
 					print '-----------------'
-				print 'Miner', str(self.id), 'found block at level', str(i), 'time:', self.env._now
+				chainnum = getchainnum(self.blocks[i].prefix, i)
+				print 'Miner', str(self.id), 'found block at level', str(i), 'chainnum:', str(chainnum), 'time:', self.env._now
 
 				self.blocks[i].time = self.env._now
 				successful = True
@@ -193,7 +195,7 @@ class Miner(object):
 			
 				#Link parent chain dep on hash, as well as ldesc/rdesc?
 				if link == False:
-					chainnum = getchainnum(self.blocks[i].prefix, i)
+					
 					self.chains[i][chainnum].addBlock(self.blocks[i])
 					self.profit += 1./(2**(i))
 				else:
@@ -357,8 +359,8 @@ def updateTreeChain(treechain1, treechain2):
 		for chainnum in range(0,len(treechain1[level])):
 			lr = chainnum % 2
 			#Subsequent chains must be checked for validity with parent chain as well.
-			if chainPairingValid(treechain1[level-1][chainnum/2], treechain1[level][chainnum], lr):
-				if chainPairingValid(treechain2[level-1][chainnum/2], treechain2[level][chainnum], lr):
+			if chainPairingValid(newtreechain[level-1][chainnum/2], treechain1[level][chainnum], lr):
+				if chainPairingValid(newtreechain[level-1][chainnum/2], treechain2[level][chainnum], lr):
 					#Check chain lengths
 					newtreechain[level][chainnum] = longerChain(treechain1[level][chainnum], treechain2[level][chainnum]).copy()
 				else:
@@ -370,14 +372,31 @@ def updateTreeChain(treechain1, treechain2):
 				else:
 					print 'Both treechains in comparison broken. Something is wrong'
 					sys.exit()
-	return treechain1
+	return newtreechain
+
+#Takes in block, travels forward and upward to highest chain linked
+#def findHighestChainLink(
+
+def analyzeChains(miner):
+	print "Chain Analysis \n"
+	#miner = miners[0]
+	chains = miner.chains
+
+	#Count # of blocks per chain, print out visually
+	for chainlevel in chains:
+		
+		for chain in chainlevel:
+			print str(chain.length())
+			
+		print "----------"
+	#
 					
 env = simpy.Environment()
 #env.process(car(env)) #for interactions
 #chain1 = Chain(None)
 #chains = [[chain1]] #2-dim list for tree structure of chains
 miners = []
-for i in range(0,400):
+for i in range(0,2):
 	neighbors.append(Miner(env, i))
 #miner1 = Miner(env, 1)
 #miner2 = Miner(env, 2)
@@ -385,3 +404,4 @@ for i in range(0,400):
 #neighbors.append(miner2)
 #env.process()
 env.run(until=10000)
+analyzeChains(neighbors[0])
