@@ -10,7 +10,7 @@ txncnt = 1
 
 time = time.time()
 print time
-#random.seed(1401714166.57)
+random.seed(1401892433.27)
 
 
 #TODO
@@ -418,19 +418,23 @@ def updateTreeChain(treechain1, treechain2):
 
 def getChainInd(block, chain):
 	for i in range(0, chain.length()):
-		if block == chain[i]:
+		if block == chain.blocks[i]:
 			return i
 	return -1
 
 #Takes in block, travels forward and upward to highest chain linked
 def findChainLinks(blockInd, level, chainnum, chains):
-	
+	if level >= numlevels:
+		print 'Too deep a level!'
+		sys.exit()	
+
 	currChain = [level, chainnum]
 	currInd = blockInd
 
 	heightTimes = []#Stores times of heights
 	heightTimes.append(chains[level][chainnum].blocks[blockInd].time)
-
+	
+	currChainnum = chainnum
 	for i in range(0,level):
 		currLevel = level-i
 		
@@ -458,7 +462,8 @@ def analyzeChains(miner):
 	print "Chain Analysis \n"
 	#miner = miners[0]
 	chains = miner.chains
-
+	
+	print "Blocks by level:"
 	#Count # of blocks per chain, print out visually
 	for chainlevel in chains:
 		
@@ -469,7 +474,16 @@ def analyzeChains(miner):
 	
 
 	#Next, compute how long it took each block to get linked to higher layers
+	print "Statistics on blocks:"
 	
+	for level in range(0,numlevels):
+		for chainnum in range(0, len(miner.chains[level])):
+			for blockInd in range(0,chains[level][chainnum].length()):
+				#blockInd, level, chainnum, chains
+				heighttimes = findChainLinks(blockInd, level, chainnum, miner.chains)
+				timetoheight = [x-min(heighttimes) for x in heighttimes]
+				print heighttimes
+				print level, timetoheight
 					
 env = simpy.Environment()
 #env.process(car(env)) #for interactions
@@ -485,5 +499,5 @@ for i in range(0,4):
 #neighbors.append(miner1)
 #neighbors.append(miner2)
 #env.process()
-env.run(until=1000000)
+env.run(until=100000)
 analyzeChains(neighbors[0])
