@@ -27,6 +27,8 @@ class Chain(object):
 	def __init__(self, parent):
 		#self.env = env
 		self.parent = parent
+
+		#Children aren't being used... no comparison either
 		self.lchild = None
 		self.rchild = None
 		self.blocks = []
@@ -36,14 +38,14 @@ class Chain(object):
 		chain.lchild = self.lchild
 		chain.rchild = self.rchild
 		for block in self.blocks:
-			chain.blocks.append(block.copy())
+			chain.blocks.append(block.carbonCopy())
 		return chain
 
 	def addChild(self, child, rightleft):
 		if rightleft == 0:
 			self.lchild = child
 		else:
-			self.rchidl = child
+			self.rchild = child
 
 	def addBlock(self, block):
 		self.blocks.append(block)
@@ -81,21 +83,53 @@ class Block(object):
 	#Need to test when this increments
 	def run(self):
 		while True:
-			self.age += 1
+			#Age breaks equality, for now. Fix later
+			#self.age += 1
 			yield self.env.timeout(1)
 		
 	#Copy gets "refreshed" block, to re-mine
 	def copy(self):
 		return Block(self.env, self.transactions, self.level, self.previous, self.time)
-		
+
+	#Need to make sure parents/links are to same place
+	def carbonCopy(self):
+		block = Block(self.env, self.transactions, self.level, self.previous, self.time)
+		#print block.action
+		block.age = self.age
+		block.desc = self.desc
+		block.prefix = self.prefix
+		block.parent = self.parent #As long as __eq__ is correct, should be fine?
+		block.difficulty = self.difficulty
+		block.conf = self.conf
+		block.conftimes = list(self.conftimes)
+		#block.action = env.process(block.run())
+				
+		return block
+
+	#Need to make sure txn comparison working as well
 	def __eq__(self, other):
 		if other == None:
 			return False
-		return self.__dict__ == other.__dict__
+
+		#Don't pop if same exact struct
+		if self.__repr__() == other.__repr__():
+			return True
+
+		selfrun = self.__dict__.pop("action")
+		#print other.__dict__
+		otherrun = other.__dict__.pop("action")
+		#print '------------------------------'
+		same = self.__dict__ == other.__dict__
+		self.__dict__["action"] = selfrun
+		other.__dict__["action"] = otherrun 
+		#print other.__dict__
+		#print 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+		return same
 
 	def __ne__(self, other):
 		if other == None:
 			return True
+		
 		return not self.__eq__(other)		
 
 	#def setLDesc(self, ldesc):
@@ -286,6 +320,9 @@ def initChains(levels):
 def genHash(hashsize):
 	return ('{0:0'+str(hashsize)+'b}').format(random.randint(0,2**(hashsize)-1))
 
+def num2Hash(num, level):
+	return ('{0:0'+str(level)+'b}').format(num)
+
 #def getChainParent(level, chainnum):
 #	return chainnum/2
 
@@ -315,16 +352,21 @@ def chainPairingValid(parent, child, lr):
 	for parentInd in range(0,parent.length()):
 		if parent.blocks[parentInd].desc[lr] != None:
 			#Catches null child case
-			if child.length() == 0:
+			if child.length() == 0 or childInd == child.length():
 				return False
-			while child.blocks[childInd].parent == None and childInd < child.length():
+			while childInd < child.length()-1 and child.blocks[childInd].parent == None:
 				childInd += 1
 			parentlink = child.blocks[childInd].parent
 			childlink = parent.blocks[parentInd].desc[lr]
 			#rlink = parent.blocks[parentInd].desc[1]
 
-			if parentlink != parent.blocks[parentInd] or childlink != child.blocks[childInd]:# and parentlink != rlink:
+			if parentlink != parent.blocks[parentInd]:# or # and parentlink != rlink:
 				return False
+			if childlink != child.blocks[childInd]:
+				return False
+
+			#If continuing, need to move childInd forward one
+			childInd += 1
 
 	return True
 
@@ -374,8 +416,43 @@ def updateTreeChain(treechain1, treechain2):
 					sys.exit()
 	return newtreechain
 
+def getChainInd(block, chain):
+	for i in range(0, chain.length()):
+		if block == chain[i]:
+			return i
+	return -1
+
 #Takes in block, travels forward and upward to highest chain linked
-#def findHighestChainLink(
+def findChainLinks(blockInd, level, chainnum, chains):
+	
+	currChain = [level, chainnum]
+	currInd = blockInd
+
+	heightTimes = []#Stores times of heights
+	heightTimes.append(chains[level][chainnum].blocks[blockInd].time)
+
+	for i in range(0,level):
+		currLevel = level-i
+		
+		blockFound = False
+		for j in range(currInd, chains[currLevel][currChainnum].length()):
+		
+			currBlock = chains[currLevel][currChainnum].blocks[j]
+
+			if currBlock.parent != None:
+				#currLevel -= 1
+				#Take time of block that goes to next level
+				heightTimes.append(currBlock.time)
+				blockFound = True
+				currChainnum /= 2
+				currInd = getChainInd(currBlock.parent, chains[currLevel-1][currChainnum])
+				break
+
+		if not blockFound:
+			#Ends function, no more links to be found
+			return heightTimes
+			
+	return heightTimes
 
 def analyzeChains(miner):
 	print "Chain Analysis \n"
@@ -389,15 +466,20 @@ def analyzeChains(miner):
 			print str(chain.length())
 			
 		print "----------"
-	#
+	
+
+	#Next, compute how long it took each block to get linked to higher layers
+	
 					
 env = simpy.Environment()
 #env.process(car(env)) #for interactions
 #chain1 = Chain(None)
 #chains = [[chain1]] #2-dim list for tree structure of chains
 miners = []
-for i in range(0,2):
-	neighbors.append(Miner(env, i))
+for i in range(0,4):
+	miner = Miner(env, i)
+	miner.branch = num2Hash(i, numlevels-1)
+	neighbors.append(miner)
 #miner1 = Miner(env, 1)
 #miner2 = Miner(env, 2)
 #neighbors.append(miner1)
