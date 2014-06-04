@@ -10,7 +10,7 @@ txncnt = 1
 
 time = time.time()
 print time
-random.seed(1401714166.57)
+#random.seed(1401714166.57)
 
 
 #TODO
@@ -62,8 +62,8 @@ class Block(object):
 		#self.ldesc = None
 		self.rdesc = None
 
-	def __init__(self, env, transactions, level, previous, time):
-		self.env = env
+	def __init__(self, transactions, level, previous, time):
+		#self.env = env
 		self.age = 0 #how old the block is since it was "created"
 		self.transactions = transactions
 		#self.ldesc = None
@@ -77,23 +77,23 @@ class Block(object):
 		self.difficulty = 1 #Need to figure out exact method, for now block depth as proxy
 		self.conf = 0
 		self.conftimes = [] #Store age during confs, says how long first conf took, etc
-		self.action = env.process(self.run())
+		#self.action = env.process(self.run())
 		self.time = time #Env time when it gets put in block. "timestamp"
 
 	#Need to test when this increments
-	def run(self):
-		while True:
+	#def run(self):
+	#	while True:
 			#Age breaks equality, for now. Fix later
 			#self.age += 1
-			yield self.env.timeout(1)
+	#		yield self.env.timeout(sys.maxint)
 		
 	#Copy gets "refreshed" block, to re-mine
 	def copy(self):
-		return Block(self.env, self.transactions, self.level, self.previous, self.time)
+		return Block(self.transactions, self.level, self.previous, self.time)
 
 	#Need to make sure parents/links are to same place
 	def carbonCopy(self):
-		block = Block(self.env, self.transactions, self.level, self.previous, self.time)
+		block = Block(self.transactions, self.level, self.previous, self.time)
 		#print block.action
 		block.age = self.age
 		block.desc = self.desc
@@ -115,13 +115,13 @@ class Block(object):
 		if self.__repr__() == other.__repr__():
 			return True
 
-		selfrun = self.__dict__.pop("action")
+		#selfrun = self.__dict__.pop("action")
 		#print other.__dict__
-		otherrun = other.__dict__.pop("action")
+		#otherrun = other.__dict__.pop("action")
 		#print '------------------------------'
 		same = self.__dict__ == other.__dict__
-		self.__dict__["action"] = selfrun
-		other.__dict__["action"] = otherrun 
+		#self.__dict__["action"] = selfrun
+		#other.__dict__["action"] = otherrun 
 		#print other.__dict__
 		#print 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 		return same
@@ -189,9 +189,9 @@ class Miner(object):
 		self.blocks = []
 		for i in range(0, numlevels):
 			if len(self.chains[i]) > 0:
-				self.blocks.append(Block(self.env, txns[i], i, self.chains[i][-1], -1))
+				self.blocks.append(Block(txns[i], i, self.chains[i][-1], -1))
 			else:
-				self.blocks.append(Block(self.env, txns[i], i, None,  -1))				
+				self.blocks.append(Block(txns[i], i, None,  -1))				
 
 	#For now faking it, just sharing self
 	def alertOnBlock(self):
@@ -485,5 +485,5 @@ for i in range(0,4):
 #neighbors.append(miner1)
 #neighbors.append(miner2)
 #env.process()
-env.run(until=10000)
+env.run(until=1000000)
 analyzeChains(neighbors[0])
