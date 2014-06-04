@@ -3,9 +3,11 @@ import os
 import sys
 import random
 import time
+import itertools
 
 target = sys.maxint/(2**14)
-numlevels = 3
+maxtime = 1000000
+numlevels = 4
 txncnt = 1
 
 time = time.time()
@@ -468,29 +470,48 @@ def analyzeChains(miner):
 	for chainlevel in chains:
 		
 		for chain in chainlevel:
-			print str(chain.length())
+			print "|" + str(chain.length()) + "| (" + str(maxtime/float(chain.length())) +" ticks per block)" 
 			
 		print "----------"
 	
 
 	#Next, compute how long it took each block to get linked to higher layers
 	print "Statistics on blocks:"
-	
-	for level in range(0,numlevels):
-		for chainnum in range(0, len(miner.chains[level])):
-			for blockInd in range(0,chains[level][chainnum].length()):
-				#blockInd, level, chainnum, chains
+	numblocks = 0
+	levelstats = [[] for x in range(1,numlevels)]
+	for level in range(numlevels):
+		for chainnum in range(len(miner.chains[level])):
+			for blockInd in range(chains[level][chainnum].length()):
 				heighttimes = findChainLinks(blockInd, level, chainnum, miner.chains)
 				timetoheight = [x-min(heighttimes) for x in heighttimes]
-				print heighttimes
-				print level, timetoheight
-					
+				#Let's worry about confirmed blocks all the way to the top
+				if len(timetoheight) != level+1:
+					continue
+				if level == 0:
+					continue
+				else:
+					levelstats[level-1].append(timetoheight[1:len(timetoheight)])
+					numblocks += 1
+				#print heighttimes
+				#print level, timetoheight
+				
+	for level in levelstats:
+		levelsize = len(level)
+		added = list(apply_elementwise_function(level, sum))
+		reduced = [float(addeditem)/levelsize for addeditem in added]
+		print reduced
+	#print levelstats
+		
+def apply_elementwise_function(elements_in_iterables, function):
+	elementwise_function = lambda x, y: itertools.imap(function, itertools.izip(x, y))
+	return reduce(elementwise_function, elements_in_iterables)
+			
 env = simpy.Environment()
 #env.process(car(env)) #for interactions
 #chain1 = Chain(None)
 #chains = [[chain1]] #2-dim list for tree structure of chains
 miners = []
-for i in range(0,4):
+for i in range(0,2**(numlevels-1)):
 	miner = Miner(env, i)
 	miner.branch = num2Hash(i, numlevels-1)
 	neighbors.append(miner)
@@ -499,5 +520,5 @@ for i in range(0,4):
 #neighbors.append(miner1)
 #neighbors.append(miner2)
 #env.process()
-env.run(until=100000)
+env.run(until=maxtime)
 analyzeChains(neighbors[0])
